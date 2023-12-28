@@ -10,10 +10,12 @@
 //
 
 #import "WDCanvas.h"
-#import "WDDrawing.h"
 #import "WDDrawingController.h"
 #import "WDPickResult.h"
 #import "WDTool.h"
+#import "UIView+Additions.h"
+
+#define kOptionsViewCornerRadius    9
 
 @implementation WDEvent
 @synthesize location;
@@ -64,6 +66,22 @@
     return nil;
 }
 
+- (void) configureOptionsView:(UIView *)options
+{
+    CALayer *layer = options.layer;
+    
+    UIBezierPath *shadowPath = [UIBezierPath bezierPathWithRoundedRect:options.bounds
+                                                          cornerRadius:kOptionsViewCornerRadius];
+    
+    layer.shadowPath = shadowPath.CGPath;
+    layer.cornerRadius = kOptionsViewCornerRadius;
+    layer.shadowOpacity = 0.4f;
+    layer.shadowRadius = 2;
+    layer.shadowOffset = CGSizeZero;
+
+    [options addParallaxEffect];
+}
+
 - (void) activated
 {
 }
@@ -77,16 +95,22 @@
     return NO;
 }
 
+- (BOOL) shouldSnapPointsToGuides
+{
+    return NO;
+}
+
 - (CGPoint) snappedPointForPoint:(CGPoint)pt inCanvas:(WDCanvas *)canvas
 {
     NSUInteger snapFlags = [canvas.drawing snapFlags] | kWDSnapLocked | kWDSnapSubelement;
     
-    WDPickResult *result = [canvas.drawingController snappedPoint:pt viewScale:canvas.viewScale snapFlags:(int)snapFlags];
-    if (result.snapped) {
-        pt = result.snappedPoint;
+    if (self.shouldSnapPointsToGuides && canvas.drawing.dynamicGuides) {
+        snapFlags |= kWDSnapDynamicGuides;
     }
     
-    return pt;
+    WDPickResult *result = [canvas.drawingController snappedPoint:pt viewScale:canvas.viewScale snapFlags:(int)snapFlags];
+    
+    return result.snapped ? result.snappedPoint : pt;
 }
 
 #pragma mark -

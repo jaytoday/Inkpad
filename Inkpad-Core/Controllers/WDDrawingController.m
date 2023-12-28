@@ -16,18 +16,16 @@
 #import "NSArray+Additions.h"
 #import "NSString+Additions.h"
 #import "UIImage+Additions.h"
-#import "WDAbstractPath.h"
 #import "WDBezierNode.h"
 #import "WDColor.h"
 #import "WDCompoundPath.h"
-#import "WDDrawing.h"
 #import "WDDrawingController.h"
+#import "WDDynamicGuideController.h"
 #import "WDFontManager.h"
 #import "WDGroup.h"
 #import "WDImage.h"
 #import "WDInspectableProperties.h"
 #import "WDLayer.h"
-#import "WDPath.h"
 #import "WDPathfinder.h"
 #import "WDPropertyManager.h"
 #import "WDText.h"
@@ -51,6 +49,7 @@ NSString *WDSelectionChangedNotification = @"WDSelectionChangedNotification";
 @synthesize lastAppliedTransform = lastAppliedTransform_;
 @synthesize undoSelectionStack = undoSelectionStack_;
 @synthesize redoSelectionStack = redoSelectionStack_;
+@synthesize dynamicGuideController = dynamicGuideController_;
 
 - (id) init
 {
@@ -341,6 +340,31 @@ NSString *WDSelectionChangedNotification = @"WDSelectionChangedNotification";
     return NO;
 }
 
+- (NSArray *) guideGeneratingObjects
+{
+    NSMutableArray *result  = [NSMutableArray array];
+    
+    for (WDLayer *layer in drawing_.layers) {
+        if (layer.hidden) {
+            // don't snap to objects on hidden layers
+            continue;
+        }
+        
+        if (self.drawing.isolateActiveLayer && layer != self.drawing.activeLayer) {
+            // ignore non-isolated layers
+            continue;
+        }
+        
+        NSArray *unselected = [layer.elements filter:^BOOL(id obj) {
+            return ![selectedObjects_ containsObject:obj];
+        }];
+        
+        [result addObjectsFromArray:unselected];
+    }
+    
+    return result;
+}
+
 - (NSMutableArray *) orderedSelectedObjects
 {
     NSMutableArray *ordered = [NSMutableArray array];
@@ -384,6 +408,17 @@ NSString *WDSelectionChangedNotification = @"WDSelectionChangedNotification";
     
     for (WDElement *element in selectedObjects_) {
         bounds = CGRectUnion(bounds, element.bounds);
+    }
+    
+    return bounds;
+}
+
+- (CGRect) selectionStyleBounds
+{
+    CGRect bounds = CGRectNull;
+    
+    for (WDElement *element in selectedObjects_) {
+        bounds = CGRectUnion(bounds, element.styleBounds);
     }
     
     return bounds;
@@ -659,7 +694,7 @@ NSString *WDSelectionChangedNotification = @"WDSelectionChangedNotification";
     NSMutableDictionary  *pbItems = [NSMutableDictionary dictionary];
     
     if ([pb isEqual:[UIPasteboard generalPasteboard]]) {
-        UIImage *image = [WDDrawing imageForElements:selection scale:1];
+        UIImage *image = [WDDrawing imageForElements:selection scale:2];
         pbItems[(NSString *)kUTTypePNG] = UIImagePNGRepresentation(image);
     }
     
@@ -820,9 +855,9 @@ NSString *WDSelectionChangedNotification = @"WDSelectionChangedNotification";
         WDAbstractPath *outline = [path outlineStroke];
         
         if (outline) {
-            outline.fill = [self.propertyManager activeStrokeStyle].color;
-            outline.shadow = [self.propertyManager activeShadow];
-            outline.opacity = [[self.propertyManager defaultValueForProperty:WDOpacityProperty] floatValue];
+            outline.fill = path.strokeStyle.color;
+            outline.shadow = path.shadow;
+            outline.opacity = path.opacity;
             
             [path.layer insertObject:outline above:element];
             [path.layer removeObject:element];
@@ -1189,15 +1224,19 @@ NSString *WDSelectionChangedNotification = @"WDSelectionChangedNotification";
 
 - (void) placeImage:(UIImage *)image
 {
-    image = [image downsampleWithMaxDimension:1024];
+    image = [image downsampleWithMaxArea:4096*4096];
     WDImage *placedImage = [WDImage imageWithUIImage:image inDrawing:drawing_];
     
-    float scale = (drawing_.dimensions.width / 2) / image.size.width;
+    CGSize imageSize = image.size;
+    CGSize drawingSize = drawing_.dimensions;
+    
+    double imageRatio = imageSize.width / imageSize.height;
+    double drawingRatio = drawingSize.width / drawingSize.height;
+    double scale = (drawingRatio > imageRatio) ? (drawingSize.height / imageSize.height) : (drawingSize.width / imageSize.width);
     scale = (scale > 1) ? 1 : scale;
     
-    float width = scale * image.size.width;
-    float height = scale * image.size.height;
-    CGPoint ul = CGPointMake((drawing_.dimensions.width - width) / 2, (drawing_.dimensions.height - height) / 2);
+    imageSize = WDMultiplySizeScalar(imageSize, scale);
+    CGPoint ul = CGPointMake((drawingSize.width - imageSize.width) / 2, (drawingSize.height - imageSize.height) / 2);
     
     CGAffineTransform transform = CGAffineTransformMakeTranslation(ul.x, ul.y);
     transform = CGAffineTransformScale(transform, scale, scale);
@@ -1214,10 +1253,21 @@ NSString *WDSelectionChangedNotification = @"WDSelectionChangedNotification";
 #pragma mark -
 #pragma mark Styles
 
+- (BOOL) canAnySelectedObjectInspectProperty:(NSString *)property
+{
+    for (WDElement *element in [self.selectedObjects objectEnumerator]) {
+        if ([element canInspectProperty:property]) {
+            return YES;
+        }
+    }
+    
+    return NO;
+}
+
 - (void) setValue:(id)value forProperty:(NSString *)property
 {
-    if (self.selectedObjects.count == 0) {
-        // no selection, so directly set the default value on the property manager
+    if (self.selectedObjects.count == 0 || ![self canAnySelectedObjectInspectProperty:property]) {
+        // no selection (or no selected object inspects this property), so directly set the default value on the property manager
         [propertyManager_ setDefaultValue:value forProperty:property];
         // and invalidate it so that inspectors react properly
         [propertyManager_ addToInvalidProperties:property];
@@ -1749,6 +1799,15 @@ NSString *WDSelectionChangedNotification = @"WDSelectionChangedNotification";
 #pragma mark -
 #pragma mark Hit Testing
 
+- (WDDynamicGuideController *) dynamicGuideController
+{
+    if (!dynamicGuideController_) {
+        dynamicGuideController_ = [[WDDynamicGuideController alloc] initWithDrawingController:self];
+    }
+    
+    return dynamicGuideController_;
+}
+
 - (WDPickResult *) snappedPoint:(CGPoint)pt viewScale:(float)viewScale snapFlags:(int)flags
 {
     WDPickResult    *pickResult;
@@ -1809,6 +1868,19 @@ NSString *WDSelectionChangedNotification = @"WDSelectionChangedNotification";
         
         snap.x = floor((pt.x / gridSpacing) + 0.5) * gridSpacing;
         snap.y = floor((pt.y / gridSpacing) + 0.5) * gridSpacing;
+        
+        pickResult = [WDPickResult pickResult];
+        pickResult.snappedPoint = snap;
+        
+        return pickResult;
+    }
+    
+    if (flags & kWDSnapDynamicGuides) {
+        WDDynamicGuideController *guideController = self.dynamicGuideController;
+        
+        // harmless if already called
+        [guideController beginGuideOperation];
+        CGPoint snap = [guideController adjustedPointForGuides:pt viewScale:viewScale];
         
         pickResult = [WDPickResult pickResult];
         pickResult.snappedPoint = snap;

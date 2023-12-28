@@ -121,7 +121,7 @@ BOOL decomposeArcToCubic(CGMutablePathRef path, float angle, float rx, float ry,
 
     // Some results of atan2 on some platform implementations are not exact enough. So that we get more
     // cubic curves than expected here. Adding 0.001f reduces the count of segments to the correct count.
-    int segments = ceilf(fabsf(thetaArc / (M_PI_2 + 0.001f)));
+    int segments = ceilf(fabs(thetaArc / (M_PI_2 + 0.001f)));
     for (int i = 0; i < segments; ++i) {
         float startTheta = theta1 + i * thetaArc / segments;
         float endTheta = theta1 + (i + 1) * thetaArc / segments;
@@ -223,9 +223,9 @@ BOOL decomposeArcToCubic(CGMutablePathRef path, float angle, float rx, float ry,
                 to = getPoint(arguments, i + 4, path_, absolute);
                 pathLog(@"Curve(C): cp1(%f, %f) cp2(%f, %f) to(%f, %f)", cp1.x, cp1.y, cp2.x, cp2.y, to.x, to.y);
                 CGPathAddCurveToPoint(path_, NULL, cp1.x, cp1.y, cp2.x, cp2.y, to.x, to.y);
+                lastCurveControl_ = cp2;
+                lastQuadCurveControl_ = CGPathGetCurrentPoint(path_);
             }
-            lastCurveControl_ = cp2;
-            lastQuadCurveControl_ = CGPathGetCurrentPoint(path_);
             break;
         case 'S':
         case 's':
@@ -235,9 +235,9 @@ BOOL decomposeArcToCubic(CGMutablePathRef path, float angle, float rx, float ry,
                 to = getPoint(arguments, i + 2, path_, absolute);
                 pathLog(@"Curve(S): cp1(%f, %f) cp2(%f, %f) to(%f, %f)", cp1.x, cp1.y, cp2.x, cp2.y, to.x, to.y);
                 CGPathAddCurveToPoint(path_, NULL, cp1.x, cp1.y, cp2.x, cp2.y, to.x, to.y);
+                lastCurveControl_ = cp2;
+                lastQuadCurveControl_ = CGPathGetCurrentPoint(path_);
             }
-            lastCurveControl_ = cp2;
-            lastQuadCurveControl_ = CGPathGetCurrentPoint(path_);
             break;
         case 'Q':
         case 'q':
@@ -246,9 +246,9 @@ BOOL decomposeArcToCubic(CGMutablePathRef path, float angle, float rx, float ry,
                 to = getPoint(arguments, i + 2, path_, absolute);
                 pathLog(@"Curve(Q): cp(%f, %f) to(%f, %f)", cp1.x, cp1.y, to.x, to.y);
                 CGPathAddQuadCurveToPoint(path_, NULL, cp1.x, cp1.y, to.x, to.y);
+                lastCurveControl_ = CGPathGetCurrentPoint(path_);
+                lastQuadCurveControl_ = cp1;
             }
-            lastCurveControl_ = CGPathGetCurrentPoint(path_);
-            lastQuadCurveControl_ = cp1;
             break;
         case 'T':
         case 't':
@@ -257,9 +257,9 @@ BOOL decomposeArcToCubic(CGMutablePathRef path, float angle, float rx, float ry,
                 to = getPoint(arguments, i, path_, absolute);
                 pathLog(@"Curve(T): cp(%f, %f) to(%f, %f)", cp1.x, cp1.y, to.x, to.y);
                 CGPathAddQuadCurveToPoint(path_, NULL, cp1.x, cp1.y, to.x, to.y);
+                lastCurveControl_ = CGPathGetCurrentPoint(path_);
+                lastQuadCurveControl_ = cp1;
             }
-            lastCurveControl_ = CGPathGetCurrentPoint(path_);
-            lastQuadCurveControl_ = cp1;
             break;
         case 'A':
         case 'a':

@@ -18,7 +18,6 @@
 #import "NSString+Additions.h"
 #import "UIColor+Additions.h"
 #import "WDBezierNode.h"
-#import "WDBezierSegment.h"
 #import "WDColor.h"
 #import "WDFillTransform.h"
 #import "WDFontManager.h"
@@ -36,13 +35,12 @@ NSString *WDTextPathStartOffsetKey = @"WDTextPathStartOffsetKey";
 NSString *WDTextPathAlignmentKey = @"WDTextPathAlignmentKey";
 
 #define kOverflowRadius             4
-#define kStartBarLength             30
 #define kMaxOutwardKernAdjustment   (-0.25f)
 
 @interface WDTextPath (WDPrivate)
 - (NSInteger) segmentCount;
 - (void) layout;
-- (void) getStartKnobBase:(CGPoint *)base andTop:(CGPoint *)top;
+- (void) getStartKnobBase:(CGPoint *)base andTop:(CGPoint *)top viewScale:(float)viewScale;
 @end
 
 @implementation WDTextPath
@@ -127,7 +125,7 @@ NSString *WDTextPathAlignmentKey = @"WDTextPathAlignmentKey";
 - (CGRect) styleBounds 
 {
     [self layout];
-    return [self expandStyleBounds:styleBounds_];
+    return CGRectUnion([self expandStyleBounds:styleBounds_], self.bounds);
 }
 
 - (BOOL) hasEditableText
@@ -762,13 +760,13 @@ done:
                              CGPointMake(overflowPoint.x, overflowPoint.y + 3));
 }
 
-- (void) drawTextPathControlsWithViewTransform:(CGAffineTransform)viewTransform
+- (void) drawTextPathControlsWithViewTransform:(CGAffineTransform)viewTransform viewScale:(float)viewScale
 {
     // draw start bar
     CGPoint     base, top;
     UIColor     *color = displayColor_ ? displayColor_ : self.layer.highlightColor;
     
-    [self getStartKnobBase:&base andTop:&top];
+    [self getStartKnobBase:&base andTop:&top viewScale:viewScale];
     
     base = CGPointApplyAffineTransform(base, viewTransform);
     base = WDRoundPoint(base);
@@ -829,21 +827,16 @@ done:
     return NO;
 }
 
-- (void) getStartKnobBase:(CGPoint *)base andTop:(CGPoint *)top
+- (void) getStartKnobBase:(CGPoint *)base andTop:(CGPoint *)top viewScale:(float)viewScale
 {
-    float   startDistance = MIN(startOffset_ + 0.01, [self length:YES] - 0.01); // add some fudge
-    CGPoint tangent = CGPointZero;
-    CGPoint startPt = [self getPointOnPathAtDistance:startDistance tangentVector:&tangent transformed:YES];
+    float       startDistance = MIN(startOffset_ + 0.01, [self length:YES] - 0.01); // add some fudge
+    CGPoint     tangent = CGPointZero;
+    CGPoint     startPt = [self getPointOnPathAtDistance:startDistance tangentVector:&tangent transformed:YES];
+    float       barLength = MIN(MAX(fontSize_ * viewScale, 10), 200); // scale with the font size, but keep the length manageable
+    CGPoint     endPt = CGPointMake(tangent.y, -tangent.x);
     
-    CGPoint endPt = WDNormalizePoint(CGPointMake(tangent.y, -tangent.x));
-    endPt = WDMultiplyPointScalar(endPt, kStartBarLength);
-    
-    // find the distance in user space and scale the end point appropriately
-    float userSpaceDistance = WDDistance(CGPointApplyAffineTransform(startPt, transform_), CGPointApplyAffineTransform(WDAddPoints(startPt, endPt), transform_));
-    endPt = WDMultiplyPointScalar(endPt, kStartBarLength / userSpaceDistance);
-    
+    endPt = WDScaleVector(endPt, barLength / viewScale);
     endPt = WDAddPoints(startPt, endPt);
-    endPt = WDRoundPoint(endPt);
     
     startPt = CGPointApplyAffineTransform(startPt, transform_);
     endPt = CGPointApplyAffineTransform(endPt, transform_);
@@ -852,10 +845,10 @@ done:
     *top = endPt;
 }
 
-- (CGRect) controlBounds
+- (CGRect) controlBounds:(float)viewScale
 {
     CGPoint base, top;
-    [self getStartKnobBase:&base andTop:&top];
+    [self getStartKnobBase:&base andTop:&top viewScale:viewScale];
     
     return WDGrowRectToPoint([super controlBounds], top);
 }
@@ -867,13 +860,13 @@ done:
     float               distance;
     float               tolerance = kNodeSelectionTolerance / viewScale;
     
-    if (!CGRectIntersectsRect(pointRect, [self controlBounds])) {
+    if (!CGRectIntersectsRect(pointRect, [self controlBounds:viewScale])) {
         return result;
     }
     
     if (flags & kWDSnapNodes) {
         CGPoint base, top;
-        [self getStartKnobBase:&base andTop:&top];
+        [self getStartKnobBase:&base andTop:&top viewScale:viewScale];
         
         distance = WDDistance(top, point);
         if (distance < tolerance) {

@@ -40,7 +40,7 @@ NSString *WDDropboxWasUnlinkedNotification = @"WDDropboxWasUnlinkedNotification"
     NSString *consumerKey = @"xxxx";
     NSString *consumerSecret = @"xxxx";
     
-    DBSession *session = [[DBSession alloc] initWithAppKey:consumerKey appSecret:consumerSecret root:kDBRootDropbox];
+    DBSession *session = [[DBSession alloc] initWithAppKey:consumerKey appSecret:consumerSecret root:kDBRootAppFolder];
     
     session.delegate = self; // DBSessionDelegate methods allow you to handle re-authenticating
     [DBSession setSharedSession:session];
@@ -50,6 +50,8 @@ NSString *WDDropboxWasUnlinkedNotification = @"WDDropboxWasUnlinkedNotification"
     dispatch_async(dispatch_get_main_queue(), ^{
         [WDFontManager sharedInstance];
     });
+    
+    [self clearTempDirectory];
     
     [self setupDefaults];
 }
@@ -116,6 +118,17 @@ NSString *WDDropboxWasUnlinkedNotification = @"WDDropboxWasUnlinkedNotification"
     }];
     
     return YES;
+}
+
+- (void) clearTempDirectory
+{
+    NSFileManager   *fm = [NSFileManager defaultManager];
+    NSURL           *tmpURL = [NSURL fileURLWithPath:NSTemporaryDirectory()];
+    NSArray         *files = [fm contentsOfDirectoryAtURL:tmpURL includingPropertiesForKeys:[NSArray array] options:0 error:NULL];
+    
+    for (NSURL *url in files) {
+        [fm removeItemAtURL:url error:nil];
+    }
 }
 
 - (void) setupDefaults

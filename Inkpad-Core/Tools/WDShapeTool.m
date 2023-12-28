@@ -10,20 +10,15 @@
 //
 
 
-#import "WDAbstractPath.h"
 #import "WDBezierNode.h"
 #import "WDCanvas.h"
-#import "WDDrawing.h"
 #import "WDDrawingController.h"
+#import "WDDynamicGuideController.h"
 #import "WDInspectableProperties.h"
 #import "WDPath.h"
 #import "WDPropertyManager.h"
 #import "WDShapeTool.h"
 #import "WDUtilities.h"
-
-#if TARGET_OS_IPHONE
-#import "UIView+Additions.h"
-#endif
 
 NSString *WDShapeToolStarInnerRadiusRatio = @"WDShapeToolStarInnerRadiusRatio";
 NSString *WDShapeToolStarPointCount = @"WDShapeToolStarPointCount";
@@ -31,8 +26,6 @@ NSString *WDShapeToolPolygonSideCount = @"WDShapeToolPolygonSideCount";
 NSString *WDShapeToolRectCornerRadius = @"WDShapeToolRectCornerRadius";
 NSString *WDDefaultShapeTool = @"WDDefaultShapeTool";
 NSString *WDShapeToolSpiralDecay = @"WDShapeToolSpiralDecay";
-
-#define kOptionsViewCornerRadius 9
 
 @implementation WDShapeTool
 
@@ -217,6 +210,11 @@ NSString *WDShapeToolSpiralDecay = @"WDShapeToolSpiralDecay";
     return ((self.flags & WDToolShiftKey) || (self.flags & WDToolSecondaryTouch)) ? YES : NO;
 }
 
+- (BOOL) shouldSnapPointsToGuides
+{
+    return YES;
+}
+
 - (void)moveWithEvent:(WDEvent *)theEvent inCanvas:(WDCanvas *)canvas
 {
     if (!self.moved) {
@@ -224,6 +222,21 @@ NSString *WDShapeToolSpiralDecay = @"WDShapeToolSpiralDecay";
     }
     
     WDPath  *temp = [self pathWithPoint:theEvent.snappedLocation constrain:[self constrain]];
+    
+    if (canvas.drawing.dynamicGuides) {
+        WDDynamicGuideController *guideController = canvas.drawingController.dynamicGuideController;
+        
+        if (shapeMode_ < WDShapeStar) {
+            // ovals and rectangles
+            canvas.dynamicGuides = [guideController snappedGuidesForRect:temp.bounds];
+        } else {
+            // snapping to the bounding box doesn't really make sense for the rest of the shapes...
+            NSMutableArray *snapped = [NSMutableArray array];
+            [snapped addObjectsFromArray:[guideController snappedGuidesForPoint:self.initialEvent.snappedLocation]];
+            [snapped addObjectsFromArray:[guideController snappedGuidesForPoint:theEvent.snappedLocation]];
+            canvas.dynamicGuides = snapped;
+        }
+    }
     
     canvas.shapeUnderConstruction = temp;
 }
@@ -249,6 +262,11 @@ NSString *WDShapeToolSpiralDecay = @"WDShapeToolSpiralDecay";
         }
         
         canvas.shapeUnderConstruction = nil;
+        canvas.dynamicGuides = nil;
+    }
+    
+    if ([canvas.drawing dynamicGuides]) {
+        [canvas.drawingController.dynamicGuideController endGuideOperation];
     }
 }
 
@@ -334,6 +352,7 @@ NSString *WDShapeToolSpiralDecay = @"WDShapeToolSpiralDecay";
     
     if (!optionsView_) {
         [[NSBundle mainBundle] loadNibNamed:@"ShapeOptions" owner:self options:nil];
+        [self configureOptionsView:optionsView_];
         
         if (shapeMode_ == WDShapeRectangle) {
             optionsSlider_.minimumValue = 0;
@@ -348,18 +367,7 @@ NSString *WDShapeToolSpiralDecay = @"WDShapeToolSpiralDecay";
             optionsSlider_.minimumValue = 10;
             optionsSlider_.maximumValue = 99;
         }
-        
-        optionsSlider_.backgroundColor = nil;
         optionsSlider_.exclusiveTouch = YES;
-        
-        optionsView_.layer.cornerRadius = kOptionsViewCornerRadius;
-        
-        UIBezierPath *shadowPath = [UIBezierPath bezierPathWithRoundedRect:optionsView_.bounds cornerRadius:kOptionsViewCornerRadius];
-        CALayer *layer = optionsView_.layer;
-        layer.shadowPath = shadowPath.CGPath;
-        layer.shadowOpacity = 0.4f;
-        layer.shadowRadius = 2;
-        layer.shadowOffset = CGSizeZero;
         
         if (shapeMode_ == WDShapeRectangle) {
             optionsTitle_.text = NSLocalizedString(@"Corner Radius", @"Corner Radius");
@@ -370,8 +378,6 @@ NSString *WDShapeToolSpiralDecay = @"WDShapeToolSpiralDecay";
         } else if (shapeMode_ == WDShapeSpiral) {
             optionsTitle_.text = NSLocalizedString(@"Decay", @"Decay");
         }
-        
-        [optionsView_ addParallaxEffect];
     }
     
     [self updateOptionsSettings];

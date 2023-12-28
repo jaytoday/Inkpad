@@ -12,8 +12,6 @@
 #import "WDBezierNode.h"
 #import "WDCanvas.h"
 #import "WDDrawingController.h"
-#import "WDDrawing.h"
-#import "WDElement.h"
 #import "WDGLUtilities.h"
 #import "WDLayer.h"
 #import "WDPath.h"
@@ -249,7 +247,7 @@
     
     if (singleSelection && !self.canvas.transforming && !self.canvas.transformingNode) {
         if ([[WDToolManager sharedInstance].activeTool isKindOfClass:[WDSelectionTool class]]) {
-            [singleSelection drawTextPathControlsWithViewTransform:effective];
+            [singleSelection drawTextPathControlsWithViewTransform:effective viewScale:self.canvas.viewScale];
         }
     }
     
@@ -279,6 +277,10 @@
     
     if (self.canvas.shapeUnderConstruction) {
         [self.canvas.shapeUnderConstruction drawOpenGLHighlightWithTransform:CGAffineTransformIdentity viewTransform:effective];
+    }
+    
+    if (self.canvas.dynamicGuides && self.canvas.dynamicGuides.count) {
+        [self.canvas.dynamicGuides makeObjectsPerformSelector:@selector(render:) withObject:canvas_];
     }
     
     [context presentRenderbuffer:GL_RENDERBUFFER_OES];

@@ -11,7 +11,6 @@
 
 #import <Twitter/Twitter.h>
 #import <MessageUI/MessageUI.h>
-#import "WDAbstractPath.h"
 #import "WDButton.h"
 #import "WDCanvas.h"
 #import "WDCanvasController.h"
@@ -30,7 +29,6 @@
 #import "WDLayerController.h"
 #import "WDMenu.h"
 #import "WDMenuItem.h"
-#import "WDPath.h"
 #import "WDPropertyManager.h"
 #import "WDRotateTool.h"
 #import "WDSelectionTool.h"
@@ -241,16 +239,16 @@
         
         [menus addObject:[WDMenuItem separatorItem]];
         
-        item = [WDMenuItem itemWithTitle:NSLocalizedString(@"Email as PNG", @"Email as PNG")
-                                  action:@selector(emailPNG:) target:self];
+        item = [WDMenuItem itemWithTitle:NSLocalizedString(@"Export as PNG", @"Export as PNG")
+                                  action:@selector(exportAsPNG:) target:self];
         [menus addObject:item];
-        
-        item = [WDMenuItem itemWithTitle:NSLocalizedString(@"Email as PDF", @"Email as PDF")
-                                  action:@selector(emailPDF:) target:self];
+
+        item = [WDMenuItem itemWithTitle:NSLocalizedString(@"Export as PDF", @"Export as PDF")
+                                  action:@selector(exportAsPDF:) target:self];
         [menus addObject:item];
-        
-        item = [WDMenuItem itemWithTitle:NSLocalizedString(@"Email as SVG", @"Email as SVG")
-                                  action:@selector(emailSVG:) target:self];
+
+        item = [WDMenuItem itemWithTitle:NSLocalizedString(@"Export as SVG", @"Export as SVG")
+                                  action:@selector(exportAsSVG:) target:self];
         [menus addObject:item];
         
         actionMenu_ = [[WDMenu alloc] initWithItems:menus];
@@ -699,12 +697,7 @@
     }
     
     // ACTION
-    else if (item.action == @selector(emailPNG:) ||
-             item.action == @selector(emailPDF:) ||
-             item.action == @selector(emailSVG:))
-    {
-        item.enabled = [MFMailComposeViewController canSendMail];
-    } else if (item.action == @selector(printDrawing:)) {
+    else if (item.action == @selector(printDrawing:)) {
         item.enabled = [UIPrintInteractionController isPrintingAvailable];
     }
     
@@ -971,17 +964,17 @@
         return editingItems_;
     } 
 
-    UIBarButtonItem *objectItem = [[UIBarButtonItem alloc] initWithTitle:@"Edit"
+    UIBarButtonItem *objectItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Edit", @"Edit")
                                                  style:UIBarButtonItemStyleBordered
                                                 target:self
                                                 action:@selector(showObjectMenu:)];
     
-    UIBarButtonItem *arrangeItem = [[UIBarButtonItem alloc] initWithTitle:@"Arrange"
+    UIBarButtonItem *arrangeItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Arrange", @"Arrange")
                                                                  style:UIBarButtonItemStyleBordered
                                                                 target:self
                                                                 action:@selector(showArrangeMenu:)];
     
-    UIBarButtonItem *pathItem = [[UIBarButtonItem alloc] initWithTitle:@"Path"
+    UIBarButtonItem *pathItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Path", @"Path")
                                                                    style:UIBarButtonItemStyleBordered
                                                                   target:self
                                                                   action:@selector(showPathMenu:)];
@@ -1024,14 +1017,14 @@
     UIBarButtonItem *swatchItem = [[UIBarButtonItem alloc] initWithCustomView:imageButton];
     imageButton.barButtonItem = swatchItem;
     
-    layerItem_ = [[UIBarButtonItem alloc] initWithTitle:@"Layers"
+    layerItem_ = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Layers", @"Layers")
                                                   style:UIBarButtonItemStyleBordered
                                                  target:self
                                                  action:@selector(showLayers:)];
     
     UIBarButtonItem *flexibleItem = [UIBarButtonItem flexibleItem];
-    UIBarButtonItem *fixedItem = [UIBarButtonItem fixedItemWithWidth:18];
-    UIBarButtonItem *smallFixedItem = [UIBarButtonItem fixedItemWithWidth:10];
+    UIBarButtonItem *fixedItem = [UIBarButtonItem fixedItemWithWidth:16];
+    UIBarButtonItem *smallFixedItem = [UIBarButtonItem fixedItemWithWidth:8];
     
     shadowWell_ = [[WDShadowWell alloc] initWithFrame:CGRectMake(0, 0, 28, 44)];
     UIBarButtonItem *shadowItem = [[UIBarButtonItem alloc] initWithCustomView:shadowWell_];
@@ -1422,7 +1415,9 @@
     [facebookSheet addImage:self.drawing.image];
     [facebookSheet setInitialText:NSLocalizedString(@"Check out my Inkpad drawing!", @"Check out my Inkpad drawing!")];
     
-    [self presentViewController:facebookSheet animated:YES completion:nil];
+    dispatch_async(dispatch_get_main_queue(), ^ {
+        [self presentViewController:facebookSheet animated:YES completion:nil];
+    });
 }
 
 - (void) tweetDrawing:(id)sender
@@ -1435,46 +1430,6 @@
     [self hidePopovers];
     
     [self presentViewController:tweetSheet animated:YES completion:nil];
-}
-
-// Dismisses the email composition interface when users tap Cancel or Send. Proceeds to update the message field with the result of the operation.
-- (void)mailComposeController:(MFMailComposeViewController*)controller didFinishWithResult:(MFMailComposeResult)result error:(NSError*)error 
-{	
-	[self.navigationController dismissViewControllerAnimated:YES completion:nil];
-}
-
-- (void) emailDrawing:(id)sender format:(NSString *)format
-{
-    MFMailComposeViewController *picker = [[MFMailComposeViewController alloc] init];
-    picker.mailComposeDelegate = self;
-    
-    NSString *baseFilename = [self.document.filename stringByDeletingPathExtension];
-    NSString *subject = NSLocalizedString(@"Inkpad Drawing: ", @"Inkpad Drawing: ");
-    subject = [subject stringByAppendingString:baseFilename];
-    [picker setSubject:subject];    
-    
-    NSData *data = nil;
-    NSString *mimetype = nil;
-    NSString *filename = nil;
-    
-    // Attach an image to the email
-    if ([format isEqualToString:@"PNG"]) {
-        data = UIImagePNGRepresentation([canvas_.drawing image]);
-        mimetype = @"image/png";
-        filename = [baseFilename stringByAppendingPathExtension:@"png"];
-    } else if ([format isEqualToString:@"PDF"]) {
-        data = [self.drawing PDFRepresentation];
-        mimetype = @"image/pdf";
-        filename = [baseFilename stringByAppendingPathExtension:@"pdf"];
-    } else if ([format isEqualToString:@"SVG"]) {
-        data = [self.drawing SVGRepresentation];
-        mimetype = @"image/svg+xml";
-        filename = [baseFilename stringByAppendingPathExtension:@"svg"];
-    } 
-    
-    [picker addAttachmentData:data mimeType:mimetype fileName:filename];
-    
-    [self.navigationController presentViewController:picker animated:YES completion:nil];
 }
 
 - (void) copyDrawing:(id)sender
@@ -1492,19 +1447,60 @@
     [UIView commitAnimations];
 }
 
-- (void) emailPNG:(id)sender
+- (void) export:(id)sender format:(NSString *)format
 {
-    [self emailDrawing:sender format:@"PNG"];
+    NSString *baseFilename = [self.document.filename stringByDeletingPathExtension];
+    NSString *filename = nil;
+
+    // Generates export file in requested format
+    if ([format isEqualToString:@"PDF"]) {
+        filename = [NSTemporaryDirectory() stringByAppendingPathComponent:[baseFilename stringByAppendingPathExtension:@"pdf"]];
+        [[self.drawing PDFRepresentation] writeToFile:filename atomically:YES];
+    } else if ([format isEqualToString:@"PNG"]) {
+        filename = [NSTemporaryDirectory() stringByAppendingPathComponent:[baseFilename stringByAppendingPathExtension:@"png"]];
+        [UIImagePNGRepresentation([canvas_.drawing image]) writeToFile:filename atomically:YES];
+    } else if ([format isEqualToString:@"SVG"]) {
+        filename = [NSTemporaryDirectory() stringByAppendingPathComponent:[baseFilename stringByAppendingPathExtension:@"svg"]];
+        [[self.drawing SVGRepresentation] writeToFile:filename atomically:YES];
+    }
+
+    // Passes exported file to UIDocumentInteractionController
+    exportFileUrl = [NSURL fileURLWithPath:filename];
+    if(exportFileUrl) {
+        self.documentInteractionController = [UIDocumentInteractionController interactionControllerWithURL:exportFileUrl];
+        [self.documentInteractionController setDelegate:self];
+        [self.documentInteractionController presentPreviewAnimated:YES];
+    }
 }
 
-- (void) emailPDF:(id)sender
+- (void) exportAsPNG:(id)sender
 {
-    [self emailDrawing:sender format:@"PDF"];
+    [self export:sender format:@"PNG"];
 }
 
-- (void) emailSVG:(id)sender
+- (void) exportAsPDF:(id)sender
 {
-    [self emailDrawing:sender format:@"SVG"];
+    [self export:sender format:@"PDF"];
+}
+
+- (void) exportAsSVG:(id)sender
+{
+    [self export:sender format:@"SVG"];
+}
+
+#pragma mark - UIDocumentInteractionController
+
+- (UIViewController *) documentInteractionControllerViewControllerForPreview: (UIDocumentInteractionController *) controller {
+    return self;
+}
+
+- (void)documentInteractionControllerDidEndPreview:(UIDocumentInteractionController *)controller
+{
+    // Clean up by removing generated file
+    NSError *error;
+    if(exportFileUrl) {
+        [[NSFileManager defaultManager] removeItemAtURL:exportFileUrl error:&error];
+    }
 }
 
 @end

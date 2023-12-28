@@ -180,7 +180,8 @@ NSString *WDDrawingNewFilenameKey = @"WDDrawingNewFilenameKey";
 
 - (NSString *) uniqueFilename
 {
-    return [self uniqueFilenameWithPrefix:@"Drawing" extension:WDDefaultDrawingExtension];
+    return [self uniqueFilenameWithPrefix:NSLocalizedString(@"Drawing", @"Default drawing name prefix")
+                                extension:WDDefaultDrawingExtension];
 }
 
 - (NSString *) cleanPrefix:(NSString *)prefix
@@ -268,7 +269,7 @@ NSString *WDDrawingNewFilenameKey = @"WDDrawingNewFilenameKey";
         return nil;
     }
     
-    image = [image downsampleWithMaxDimension:1024];
+    image = [image downsampleWithMaxArea:4096*4096];
     
     WDDrawing *drawing = [[WDDrawing alloc] initWithImage:image imageName:imageName];
     return [self installDrawing:drawing withName:drawingName closeAfterSaving:YES] ? YES : NO;
@@ -364,14 +365,23 @@ NSString *WDDrawingNewFilenameKey = @"WDDrawingNewFilenameKey";
                         [drawingNames_ addObject:drawingName];
                         [self saveDrawingOrder_];
                         [[NSNotificationCenter defaultCenter] postNotificationName:WDDrawingAdded object:drawingName];
-                        completionBlock(doc);
+                        
+                        if (completionBlock) {
+                           completionBlock(doc);
+                        }
+                        
                         [doc closeWithCompletionHandler:nil];
                     });
                 }];
             } else {
                 dispatch_sync(dispatch_get_main_queue(), ^{
-                    errorBlock();
-                    completionBlock(nil);
+                    if (errorBlock) {
+                        errorBlock();
+                    }
+                    
+                    if (completionBlock) {
+                        completionBlock(nil);
+                    }
                 });
             }
         });

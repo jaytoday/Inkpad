@@ -44,11 +44,15 @@ typedef enum {
 @property (nonatomic, strong) WDEvent *initialEvent;
 @property (nonatomic, strong) WDEvent *previousEvent;
 @property (nonatomic, readonly) WDToolFlags flags;
+@property (nonatomic, readonly) BOOL shouldSnapPointsToGuides;
 
 + (WDTool *) tool;
 - (void) activated;
 - (void) deactivated;
 - (BOOL) isDefaultForKind;
+
+// apply common options view settings (shadow, etc.)
+- (void) configureOptionsView:(UIView *)options;
 
 #if TARGET_OS_IPHONE
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event inCanvas:(WDCanvas *)canvas;

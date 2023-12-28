@@ -20,8 +20,6 @@
 #import "WDGroup.h"
 #import "WDImage.h"
 #import "WDLayer.h"
-#import "WDPath.h"
-#import "WDSVGElement.h"
 #import "WDSVGParser.h"
 #import "WDSVGPathParser.h"
 #import "WDText.h"
@@ -136,6 +134,7 @@
 {
     NSArray *preserveAspectRatio = [[source lowercaseString] componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     BOOL slice = [preserveAspectRatio containsObject:@"slice"];
+    BOOL notUniformScale = [preserveAspectRatio containsObject:@"none"];
     enum {MIN, MID, MAX} xalign = MID, yalign = MID;
     for (NSString *token in preserveAspectRatio) {
         if ([token hasPrefix:@"xmin"]) {
@@ -153,6 +152,7 @@
     }
     CGPoint translate = CGPointZero;
     CGSize scale = CGSizeMake(bounds.size.width / size.width, bounds.size.height / size.height);
+    if (notUniformScale) {} else
     if (((scale.width > scale.height) && slice) || ((scale.width < scale.height) && !slice)) {
         switch (xalign) {
             case MIN:
@@ -371,14 +371,21 @@
     }
 }
 
-- (NSMutableArray *) copyStops
+- (NSMutableArray *) copyStopsForId:(NSString *)gradientId
 {
     NSMutableArray *stopsCopy = [gradientStops_ mutableCopy];
     [gradientStops_ removeAllObjects];
+    
     NSString *iri = [state_ idFromIRI:@"xlink:href"];
     if (iri) {
         // this part of xlink:xref inheritance works a little differently, and isn't covered by inheritXlinks:
         id painter = [styleParser_ painterForId:iri];
+        
+        if (!painter && stopsCopy.count == 0) {
+            // forward reference?
+            [styleParser_ registerGradient:gradientId forForwardReference:iri];
+        }
+        
         if ([painter isKindOfClass:[WDGradient class]]) {
             WDGradient *refGradient = painter;
             if ([stopsCopy count] == 0) {
@@ -462,6 +469,10 @@
     NSString *stopColor = [state_ style:kWDPropertyStopColor];
     NSString *stopOpacity = [state_ style:kWDPropertyStopOpacity];
     id resolvedColor = [styleParser_ resolvePainter:stopColor alpha:[stopOpacity floatValue]];
+    if (resolvedColor == nil) {
+        // must have been set to "none", but gradient stops need a non-nil color...
+        resolvedColor = [WDColor colorWithRed:0 green:0 blue:0 alpha:0];
+    }
     WDGradientStop *stop = [WDGradientStop stopWithColor:resolvedColor andRatio:offset];
     [gradientStops_ addObject:stop];
 }
@@ -692,7 +703,9 @@
             // only the <svg> group and implicit top-level group are below this one
             WDLayer *layer = [[WDLayer alloc] initWithElements:elements];
             layer.name = layerName ?: xmlid;
-            layer.opacity = [[state_ style:kWDPropertyOpacity] floatValue];
+            if ([state_ style:kWDPropertyOpacity]) {
+                layer.opacity = [[state_ style:kWDPropertyOpacity] floatValue];
+            }
             if ([[state_ style:kWDPropertyVisibility] isEqualToString:@"hidden"] || [[state_ style:kWDPropertyDisplay] isEqualToString:@"none"]) {
                 layer.hidden = YES;
             }
@@ -700,7 +713,9 @@
             [drawing_ addLayer:layer];
         } else if ([elements count] == 1) {
             state_.wdElement = [self clipAndGroup:[elements lastObject]];
-            state_.wdElement.opacity *= [[state_ style:kWDPropertyOpacity] floatValue];
+            if ([state_ style:kWDPropertyOpacity]) {
+                state_.wdElement.opacity *= [[state_ style:kWDPropertyOpacity] floatValue];
+            }
         } else {
             WDGroup *group = [[WDGroup alloc] init];
             group.layer = drawing_.activeLayer;
@@ -719,7 +734,7 @@
     CGPoint p1 = [resolved x:@"x1" y:@"y1" withBounds:state_.viewport.size];
     CGPoint p2 = [resolved x:@"x2" y:@"y2" withBounds:state_.viewport.size andDefault:CGPointMake([state_ viewWidth], 0)];
     WDFillTransform *transform = [[WDFillTransform alloc] initWithTransform:gradientTransform start:p1 end:p2];
-    NSMutableArray *stopsCopy = [self copyStops];
+    NSMutableArray *stopsCopy = [self copyStopsForId:gradientId];
     WDGradient *gradient = [WDGradient gradientWithType:kWDLinearGradient stops:stopsCopy];
     [styleParser_ setPainter:gradient withTransform:transform forId:gradientId];
 }
@@ -734,7 +749,7 @@
     float r = [resolved length:@"r" withBound:[state_ viewRadius] andDefault:([state_ viewRadius] / 2.f)];
     if (r >= 0) {
         WDFillTransform *transform = [[WDFillTransform alloc] initWithTransform:gradientTransform start:f end:CGPointMake(c.x + r, c.y)];
-        NSMutableArray *stopsCopy = [self copyStops];
+        NSMutableArray *stopsCopy = [self copyStopsForId:gradientId];
         WDGradient *gradient = [WDGradient gradientWithType:kWDRadialGradient stops:stopsCopy];
         [styleParser_ setPainter:gradient withTransform:transform forId:gradientId];
     } else {
@@ -922,19 +937,18 @@
     [svgElements_ removeLastObject];
     [self createLayerFor:state_.group];
     
-    // autosize if necessary
-    if (drawing_.width == 0 || drawing_.height == 0) {
-        for (int i = 0; i < [drawing_.layers count]; ++i) {
-            WDLayer *layer = (drawing_.layers)[i];
-            if ([layer.elements count] > 0) {
-                CGRect bounds = [layer styleBounds];
-                if (CGRectGetMaxX(bounds) > drawing_.width) {
-                    drawing_.width = CGRectGetMaxX(bounds);
-                } 
-                if (CGRectGetMaxY(bounds) > drawing_.height) {
-                    drawing_.height = CGRectGetMaxY(bounds);
-                }
+    if (drawing_.layers.count == 0) {
+        [state_ reportError:@"No layers in drawing!"];
+    } else if (drawing_.width == 0 || drawing_.height == 0) {
+        // autosize if necessary
+        for (WDLayer *layer in drawing_.layers) {
+            if (layer.elements.count == 0) {
+                continue;
             }
+            
+            CGRect bounds = [layer styleBounds];
+            drawing_.width = MAX(drawing_.width, CGRectGetMaxX(bounds));
+            drawing_.height = MAX(drawing_.height, CGRectGetMaxY(bounds));
         }
     }
 }

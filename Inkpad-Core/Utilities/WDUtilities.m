@@ -98,10 +98,10 @@ void WDDrawCheckersInRect(CGContextRef ctx, CGRect dest, int size)
     CGContextSaveGState(ctx);
     CGContextClipToRect(ctx, dest);
     
-    [[UIColor colorWithWhite:0.9f alpha:1.0f] set];
+    CGContextSetGrayFillColor(ctx, 0.9f, 1.0f);
     CGContextFillRect(ctx, dest);
     
-    [[UIColor colorWithWhite:0.78f alpha:1.0f] set];
+    CGContextSetGrayFillColor(ctx, 0.78f, 1.0f);
     for (int y = 0; y * size < CGRectGetHeight(dest); y++) {
         for (int x = 0; x * size < CGRectGetWidth(dest); x++) {
             if ((y + x) % 2) {
@@ -248,7 +248,7 @@ CGPoint WDNormalizePoint(CGPoint vector)
         return vector;
     }
     
-    return WDMultiplyPointScalar(vector, 1.0f / WDDistance(CGPointZero, vector));
+    return WDMultiplyPointScalar(vector, 1.0f / distance);
 }
 
 CGRect WDGrowRectToPoint(CGRect rect, CGPoint pt)
@@ -292,27 +292,30 @@ CGRect WDRectFromPoint(CGPoint a, float width, float height)
 
 BOOL WDCollinear(CGPoint a, CGPoint b, CGPoint c)
 {
-    float distances[3];
+    float temp, distances[3];
     
     distances[0] = WDDistance(a, b);
     distances[1] = WDDistance(b, c);
     distances[2] = WDDistance(a, c);
-    
+
+    // sort the array...
     if (distances[0] > distances[1]) {
-        float temp = distances[1];
+        temp = distances[1];
         distances[1] = distances[0];
         distances[0] = temp;
     }
     
     if (distances[1] > distances[2]) {
-        float temp = distances[2];
+        temp = distances[2];
         distances[2] = distances[1];
         distances[1] = temp;
     }
     
-    float difference = (fabs((distances[0] + distances[1]) - distances[2]));
+    // if the points are collinear, the sum of the shortest 2 distances is equal to the longest distance
+    float shortestSum = distances[0] + distances[1];
+    float difference = fabs(shortestSum - distances[2]);
     
-    return (difference < 0.0001f) ? YES : NO;
+    return (difference < 1.0e-4);
 }
 
 BOOL WDLineSegmentsIntersectWithValues(CGPoint A, CGPoint B, CGPoint C, CGPoint D, float *rV, float *sV)
@@ -351,6 +354,21 @@ CGRect WDShrinkRect(CGRect rect, float percentage)
     float   heightInset = CGRectGetHeight(rect) * percentage;
     
     return CGRectInset(rect, widthInset, heightInset);
+}
+
+CGSize WDClampSize(CGSize size, float maxDimension)
+{
+    if (size.width > maxDimension || size.height > maxDimension) {
+        if (size.width > size.height) {
+            size.height = (size.height / size.width) * maxDimension;
+            size.width = maxDimension;
+        } else {
+            size.width = (size.width / size.height) * maxDimension;
+            size.height = maxDimension;
+        }
+    }
+    
+    return size;
 }
 
 #pragma mark -

@@ -13,6 +13,12 @@
 #import <UIKit/UIKit.h>
 #endif
 
+#if WD_DEBUG
+#define WDLog NSLog
+#else
+#define WDLog(...)
+#endif
+
 #import "WDPickResult.h"
 
 @class WDStrokeStyle;
@@ -69,6 +75,8 @@ BOOL WDLineSegmentsIntersectWithValues(CGPoint A, CGPoint B, CGPoint C, CGPoint 
 BOOL WDLineSegmentsIntersect(CGPoint A, CGPoint B, CGPoint C, CGPoint D);
 
 CGRect WDShrinkRect(CGRect rect, float percentage);
+
+CGSize WDClampSize(CGSize size, float maximumDimension);
 
 //
 // Paths
@@ -210,5 +218,17 @@ static inline CGSize WDRoundSize(CGSize size)
 static inline float WDMagnitude(CGPoint point)
 {
     return WDDistance(point, CGPointZero);
+}
+
+static inline CGPoint WDScaleVector(CGPoint v, float toLength)
+{
+    float fromLength = WDMagnitude(v);
+    float scale = 1.0;
+    
+    if (fromLength != 0.0) {
+        scale = toLength / fromLength;
+    }
+    
+    return CGPointMake(v.x * scale, v.y * scale);
 }
 

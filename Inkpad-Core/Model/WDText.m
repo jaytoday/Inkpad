@@ -17,9 +17,7 @@
 #import <CoreText/CoreText.h>
 #import "NSString+Additions.h"
 #import "UIColor+Additions.h"
-#import "WDBezierSegment.h"
 #import "WDColor.h"
-#import "WDDrawing.h"
 #import "WDFillTransform.h"
 #import "WDFontManager.h"
 #import "WDGLUtilities.h"
@@ -200,7 +198,7 @@ NSString *WDAlignmentKey = @"WDAlignmentKey";
 - (CGRect) styleBounds
 {
     [self layout];
-    return [self expandStyleBounds:styleBounds_];
+    return CGRectUnion([self expandStyleBounds:styleBounds_], self.bounds);
 }
 
 - (CGRect) controlBounds
